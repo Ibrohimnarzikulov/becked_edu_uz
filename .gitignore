@@ -1,0 +1,16 @@
+/.claude
+/.idea
+/.venv
+.venv*
+
+# Env / secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+
+# Django
+/staticfiles
+/media
+db.sqlite3
