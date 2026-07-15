@@ -14,3 +14,5 @@ __pycache__/
 /staticfiles
 /media
 db.sqlite3
+.DS_Store
+docker-compose.override.yml
