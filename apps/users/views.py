@@ -6,6 +6,7 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status, generics, permissions
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -43,7 +44,7 @@ class RegisterView(APIView):
         tokens = get_tokens_for_user(user)
         return Response({
             **tokens,
-            'user': UserProfileSerializer(user).data,
+            'user': UserProfileSerializer(user, context={'request': request}).data,
         }, status=status.HTTP_201_CREATED)
 
 
@@ -63,20 +64,26 @@ class LoginView(APIView):
         tokens = get_tokens_for_user(user)
         return Response({
             **tokens,
-            'user': UserProfileSerializer(user).data,
+            'user': UserProfileSerializer(user, context={'request': request}).data,
         })
 
 
 class ProfileView(APIView):
-    """GET/PATCH /api/auth/profile/"""
+    """GET/PATCH /api/auth/profile/
+
+    PATCH `multipart/form-data` bilan `avatar` rasmini ham qabul qiladi.
+    """
     permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get(self, request):
-        serializer = UserProfileSerializer(request.user)
+        serializer = UserProfileSerializer(request.user, context={'request': request})
         return Response(serializer.data)
 
     def patch(self, request):
-        serializer = UserProfileSerializer(request.user, data=request.data, partial=True)
+        serializer = UserProfileSerializer(
+            request.user, data=request.data, partial=True, context={'request': request}
+        )
         if not serializer.is_valid():
             return Response({'error': str(serializer.errors)}, status=status.HTTP_400_BAD_REQUEST)
         serializer.save()

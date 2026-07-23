@@ -27,6 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libpq5 \
         curl \
         netcat-openbsd \
+        gosu \
     && rm -rf /var/lib/apt/lists/*
 
 # Non-root user
@@ -47,8 +48,12 @@ COPY --chown=django:django . /app
 COPY --chown=django:django entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
-USER django
+# Media va static papkalari django egaligida bo'lsin.
+RUN mkdir -p /app/media/avatars /app/staticfiles \
+    && chown -R django:django /app/media /app/staticfiles
 
+# Entrypoint root sifatida ishga tushadi (volume egaligini to'g'rilash uchun),
+# so'ng gunicorn'ni django foydalanuvchisi ostida ishga tushiradi (gosu orqali).
 EXPOSE 8000
 
 ENTRYPOINT ["/app/entrypoint.sh"]

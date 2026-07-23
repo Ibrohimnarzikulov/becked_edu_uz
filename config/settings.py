@@ -21,13 +21,20 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django.contrib.sites',
     'drf_yasg',
     'django.contrib.humanize',
 
     # Third-party
     'rest_framework',
     'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
+    'dj_rest_auth',
+    'dj_rest_auth.registration',
+    'allauth',
+    'allauth.account',
+    'allauth.socialaccount',
 
     # Local apps
     'apps.core',
@@ -49,7 +56,10 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'allauth.account.middleware.AccountMiddleware',
 ]
+
+SITE_ID = 1
 
 ROOT_URLCONF = 'config.urls'
 
@@ -90,6 +100,18 @@ AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
      'OPTIONS': {'min_length': 4}},
 ]
+
+AUTHENTICATION_BACKENDS = [
+    'django.contrib.auth.backends.ModelBackend',
+    'allauth.account.auth_backends.AuthenticationBackend',
+]
+
+# ── allauth ────────────────────────────────────────
+# Ro'yxatdan o'tish faqat username + parol orqali (email talab qilinmaydi).
+ACCOUNT_LOGIN_METHODS = {'username'}
+ACCOUNT_SIGNUP_FIELDS = ['username*', 'password1*', 'password2*']
+ACCOUNT_EMAIL_VERIFICATION = 'none'
+ACCOUNT_ADAPTER = 'apps.users.adapters.EduHubAccountAdapter'
 
 # ── i18n ───────────────────────────────────────────
 LANGUAGE_CODE = config('DEFAULT_LANGUAGE', default='uz')
@@ -136,12 +158,47 @@ SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=config('JWT_ACCESS_MINUTES', default=60, cast=int)),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=config('JWT_REFRESH_DAYS', default=7, cast=int)),
     'ROTATE_REFRESH_TOKENS': False,
+    'BLACKLIST_AFTER_ROTATION': True,
     'AUTH_HEADER_TYPES': ('Bearer',),
+}
+
+# ── dj-rest-auth ───────────────────────────────────
+# Faqat JWT — sessiya/cookie auth ishlatilmaydi.
+REST_AUTH = {
+    'USE_JWT': True,
+    'SESSION_LOGIN': False,
+    # DRF'ning Token modeli ishlatilmaydi — faqat JWT.
+    'TOKEN_MODEL': None,
+    'JWT_AUTH_COOKIE': None,
+    'JWT_AUTH_REFRESH_COOKIE': None,
+    'JWT_AUTH_HTTPONLY': False,
+    'USER_DETAILS_SERIALIZER': 'apps.users.serializers.UserSerializer',
+    'REGISTER_SERIALIZER': 'apps.users.serializers.EduHubRegisterSerializer',
+}
+
+# Swagger — JWT Bearer tokenni qo'llab-quvvatlash
+SWAGGER_SETTINGS = {
+    'SECURITY_DEFINITIONS': {
+        'Bearer': {
+            'type': 'apiKey',
+            'name': 'Authorization',
+            'in': 'header',
+            'description': "JWT token. Format: `Bearer <access_token>`",
+        }
+    },
+    'USE_SESSION_AUTH': False,
 }
 
 # ── CORS ───────────────────────────────────────────
 CORS_ALLOW_ALL_ORIGINS = config('CORS_ALLOW_ALL', default=True, cast=bool)
 CORS_ALLOW_CREDENTIALS = True
+
+# Faqat ruxsat berilgan domenlar (CORS_ALLOW_ALL=False bo'lganda ishlaydi)
+CORS_ALLOWED_ORIGINS = config(
+    'CORS_ALLOWED_ORIGINS',
+    default='',
+    cast=Csv(),
+)
 
 # ── Jazzmin ────────────────────────────────────────
 JAZZMIN_SETTINGS = {
@@ -168,6 +225,9 @@ JAZZMIN_SETTINGS = {
 
 JAZZMIN_UI_THEME = 'darkly'
 
+# Jazzmin — admin paneliga kirish uchun ruxsat berilgan URL'lar
+JAZZMIN_LOGIN_URL = '/admin/login/'
+
 # ── Production security (env-driven) ─────────
 # Faqat DEBUG=False bo'lganda qo'llaniladi.
 # HTTPS proxy orqasida ishlaganda SECURE_SSL_REDIRECT=True qiling.
@@ -184,3 +244,12 @@ SECURE_HSTS_PRELOAD = config('SECURE_HSTS_PRELOAD', default=_IS_PROD, cast=bool)
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_REFERRER_POLICY = 'same-origin'
 X_FRAME_OPTIONS = 'DENY'
+
+# ── CSRF ─────────────────────────────────────────────
+# Ishonchli domenlar (HTTPS va reverse-proxy orqali)
+# .env ga CSRF_TRUSTED_ORIGINS=https://your-domain.com,https://www.your-domain.com
+CSRF_TRUSTED_ORIGINS = config(
+    'CSRF_TRUSTED_ORIGINS',
+    default='https://localhost,http://localhost,http://127.0.0.1',
+    cast=Csv(),
+)

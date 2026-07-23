@@ -1,10 +1,22 @@
 """Serializers for users app."""
 from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
+from dj_rest_auth.registration.serializers import RegisterSerializer
 from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import User
+
+
+class AvatarUrlMixin:
+    """`avatar_url` — rasmning to'liq (absolute) manzili."""
+
+    def get_avatar_url(self, obj):
+        if not obj.avatar:
+            return None
+        request = self.context.get('request')
+        url = obj.avatar.url
+        return request.build_absolute_uri(url) if request else url
 
 
 class UserRegisterSerializer(serializers.ModelSerializer):
@@ -65,15 +77,64 @@ class UserLoginSerializer(serializers.Serializer):
         return attrs
 
 
-class UserProfileSerializer(serializers.ModelSerializer):
-    """Profil — GET/PATCH."""
+class UserProfileSerializer(AvatarUrlMixin, serializers.ModelSerializer):
+    """Profil — GET/PATCH (avatar multipart orqali yuklanadi)."""
+    avatar_url = serializers.SerializerMethodField()
+
     class Meta:
         model = User
         fields = (
-            'id', 'username', 'full_name', 'bio', 'track', 'grade',
+            'id', 'username', 'full_name', 'avatar', 'avatar_url',
+            'bio', 'track', 'grade',
             'role', 'plan', 'is_blocked', 'date_joined',
         )
         read_only_fields = ('id', 'username', 'role', 'plan', 'is_blocked', 'date_joined')
+        extra_kwargs = {'avatar': {'write_only': True, 'required': False}}
+
+
+class UserSerializer(AvatarUrlMixin, serializers.ModelSerializer):
+    """dj-rest-auth `/api/auth/user/` uchun foydalanuvchi ma'lumotlari."""
+    avatar_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = (
+            'id', 'username', 'full_name', 'avatar_url', 'bio',
+            'track', 'grade', 'role', 'plan', 'is_blocked', 'date_joined',
+        )
+        read_only_fields = ('id', 'username', 'role', 'plan', 'is_blocked', 'date_joined')
+
+
+class EduHubRegisterSerializer(RegisterSerializer):
+    """dj-rest-auth ro'yxatdan o'tish — email ixtiyoriy, qo'shimcha profil maydonlari bilan."""
+    email = serializers.EmailField(required=False, allow_blank=True)
+    full_name = serializers.CharField(max_length=120)
+    track = serializers.CharField(max_length=64, required=False, allow_blank=True, default='')
+    grade = serializers.CharField(max_length=32, required=False, allow_blank=True, default='')
+
+    def validate_username(self, value):
+        value = value.lower().strip()
+        if len(value) < 3:
+            raise serializers.ValidationError("Username kamida 3 ta belgi bo'lishi kerak")
+        if ' ' in value:
+            raise serializers.ValidationError("Username bo'sh joy qabul qilmaydi")
+        if User.objects.filter(username=value).exists():
+            raise serializers.ValidationError("Bu username band")
+        return value
+
+    def validate_full_name(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("Ism va familiyani kiriting")
+        return value.strip()
+
+    def get_cleaned_data(self):
+        data = super().get_cleaned_data()
+        data.update({
+            'full_name': self.validated_data.get('full_name', ''),
+            'track': self.validated_data.get('track', ''),
+            'grade': self.validated_data.get('grade', ''),
+        })
+        return data
 
 
 class ChangePasswordSerializer(serializers.Serializer):
@@ -88,12 +149,14 @@ class ChangePasswordSerializer(serializers.Serializer):
         return value
 
 
-class AdminUserSerializer(serializers.ModelSerializer):
+class AdminUserSerializer(AvatarUrlMixin, serializers.ModelSerializer):
     """Admin — barcha foydalanuvchilar."""
+    avatar_url = serializers.SerializerMethodField()
+
     class Meta:
         model = User
         fields = (
-            'id', 'username', 'full_name', 'role', 'plan',
+            'id', 'username', 'full_name', 'avatar_url', 'role', 'plan',
             'track', 'grade', 'is_blocked', 'date_joined',
         )
         read_only_fields = fields

@@ -462,3 +462,116 @@ class AdminCreateUserTests(TestCase):
             'username': 'x123', 'password': 'pass1234', 'full_name': 'X',
         }, format='json')
         self.assertEqual(res.status_code, 401)
+
+
+class DjRestAuthTests(TestCase):
+    """dj-rest-auth endpointlari — JWT bilan ishlashi kerak."""
+
+    def setUp(self):
+        self.client = APIClient()
+
+    def _make_user(self):
+        user = User.objects.create_user(
+            username='restauth', password='pass1234', full_name='Rest Auth'
+        )
+        res = self.client.post(
+            reverse('login'), {'username': 'restauth', 'password': 'pass1234'}, format='json'
+        )
+        return user, res.data['access']
+
+    def test_registration_returns_jwt(self):
+        """POST /api/auth/registration/ — JWT access/refresh qaytaradi."""
+        res = self.client.post('/api/auth/registration/', {
+            'username': 'yangiuser',
+            'password1': 'juda-kuchli-parol-99',
+            'password2': 'juda-kuchli-parol-99',
+            'full_name': 'Yangi User',
+        }, format='json')
+        self.assertEqual(res.status_code, 201, res.data)
+        self.assertIn('access', res.data)
+        self.assertIn('refresh', res.data)
+
+        user = User.objects.get(username='yangiuser')
+        self.assertEqual(user.role, User.ROLE_STUDENT)
+        self.assertEqual(user.full_name, 'Yangi User')
+
+    def test_registration_rejects_duplicate_username(self):
+        User.objects.create_user(username='band', password='pass1234')
+        res = self.client.post('/api/auth/registration/', {
+            'username': 'band',
+            'password1': 'juda-kuchli-parol-99',
+            'password2': 'juda-kuchli-parol-99',
+            'full_name': 'Band User',
+        }, format='json')
+        self.assertEqual(res.status_code, 400)
+
+    def test_user_details_endpoint(self):
+        """GET /api/auth/user/ — JWT bilan foydalanuvchi ma'lumotlari."""
+        user, token = self._make_user()
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token}')
+        res = self.client.get('/api/auth/user/')
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertEqual(res.data['username'], 'restauth')
+        self.assertIn('avatar_url', res.data)
+        self.assertEqual(res.data['role'], 'student')
+
+    def test_user_details_requires_auth(self):
+        res = self.client.get('/api/auth/user/')
+        self.assertEqual(res.status_code, 401)
+
+    def test_custom_login_still_wins(self):
+        """Loyihaning o'z /api/auth/login/ endpointi dj-rest-auth'nikini bosib o'tadi."""
+        User.objects.create_user(username='ustun', password='pass1234')
+        res = self.client.post(
+            reverse('login'), {'username': 'ustun', 'password': 'pass1234'}, format='json'
+        )
+        self.assertEqual(res.status_code, 200)
+        # O'z endpointimiz `user` obyektini ham qaytaradi — dj-rest-auth qaytarmaydi.
+        self.assertIn('user', res.data)
+        self.assertIn('access', res.data)
+
+
+class AvatarUploadTests(TestCase):
+    """Profil rasmini yuklash."""
+
+    def setUp(self):
+        self.client = APIClient()
+        User.objects.create_user(username='rasmli', password='pass1234')
+        res = self.client.post(
+            reverse('login'), {'username': 'rasmli', 'password': 'pass1234'}, format='json'
+        )
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {res.data['access']}")
+
+    @staticmethod
+    def _png():
+        """1x1 shaffof PNG."""
+        import base64
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        raw = base64.b64decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk'
+            'YPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+        )
+        return SimpleUploadedFile('avatar.png', raw, content_type='image/png')
+
+    def test_upload_avatar(self):
+        res = self.client.patch(
+            reverse('profile'), {'avatar': self._png()}, format='multipart'
+        )
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertIsNotNone(res.data['avatar_url'])
+        self.assertIn('/media/avatars/', res.data['avatar_url'])
+
+        user = User.objects.get(username='rasmli')
+        self.assertTrue(user.avatar)
+        user.avatar.delete(save=True)
+
+    def test_avatar_url_is_none_by_default(self):
+        res = self.client.get(reverse('profile'))
+        self.assertEqual(res.status_code, 200)
+        self.assertIsNone(res.data['avatar_url'])
+
+    def test_avatar_rejects_non_image(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        bad = SimpleUploadedFile('not.png', b'hello world', content_type='image/png')
+        res = self.client.patch(reverse('profile'), {'avatar': bad}, format='multipart')
+        self.assertEqual(res.status_code, 400)

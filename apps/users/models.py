@@ -29,6 +29,7 @@ class User(AbstractUser):
         _('rol'), max_length=16, choices=ROLE_CHOICES, default=ROLE_STUDENT
     )
     full_name = models.CharField(_("to'liq ism"), max_length=120, blank=True)
+    avatar = models.ImageField(_("rasm"), upload_to='avatars/', blank=True, null=True)
     bio = models.TextField(_("bio"), max_length=500, blank=True)
     track = models.CharField(_("yo'nalish"), max_length=64, blank=True)
     grade = models.CharField(_("sinf"), max_length=32, blank=True)
