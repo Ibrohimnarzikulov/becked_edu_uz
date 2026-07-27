@@ -106,6 +106,14 @@ AUTHENTICATION_BACKENDS = [
     'allauth.account.auth_backends.AuthenticationBackend',
 ]
 
+# ── Login/logout yo'naltirishlari ────────────────────
+# Django standarti `/accounts/login/` va `/accounts/profile/` — lekin bu
+# loyihada `/accounts/...` marshrutlari yo'q (HTML UI faqat admin panel),
+# shuning uchun standart qiymatlar 404 beradi. Admin panelga yo'naltiramiz.
+LOGIN_URL = '/admin/login/'
+LOGIN_REDIRECT_URL = '/admin/'
+LOGOUT_REDIRECT_URL = '/admin/login/'
+
 # ── allauth ────────────────────────────────────────
 # Ro'yxatdan o'tish faqat username + parol orqali (email talab qilinmaydi).
 ACCOUNT_LOGIN_METHODS = {'username'}

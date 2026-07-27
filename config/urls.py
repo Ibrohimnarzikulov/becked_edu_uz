@@ -3,6 +3,7 @@ from django.contrib import admin
 from django.conf import settings
 from django.conf.urls.static import static
 from django.urls import path, include
+from django.views.generic import RedirectView
 
 from drf_yasg import openapi
 from drf_yasg.views import get_schema_view
@@ -31,6 +32,12 @@ urlpatterns = [
     path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
 
     path('admin/', admin.site.urls),
+
+    # Django'ning eski standart yo'llari (`/accounts/...`) bu loyihada yo'q.
+    # Eski havola yoki xatcho'p 404 bermasligi uchun admin panelga yuboramiz.
+    path('accounts/profile/', RedirectView.as_view(url='/admin/', permanent=False)),
+    path('accounts/login/', RedirectView.as_view(url='/admin/login/', permanent=False,
+                                                 query_string=True)),
 
     # ── Auth ───────────────────────────────────────
     # Loyihaning o'z endpointlari (register/login/profile/admin) birinchi keladi.
