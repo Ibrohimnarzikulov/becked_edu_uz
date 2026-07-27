@@ -238,6 +238,15 @@ SECURE_PROXY_SSL_HEADER = (
 )
 SESSION_COOKIE_SECURE = config('SESSION_COOKIE_SECURE', default=_IS_PROD, cast=bool)
 CSRF_COOKIE_SECURE = config('CSRF_COOKIE_SECURE', default=_IS_PROD, cast=bool)
+
+# ── Cookie nomlari ───────────────────────────────────
+# Brauzer cookie'larni HOST bo'yicha saqlaydi — PORT hisobga olinmaydi.
+# Serverda bir IP ostida bir nechta Django loyihasi turli portlarda ishlaydi,
+# va ularning barchasi standart `csrftoken` / `sessionid` nomlarini ishlatadi.
+# Natijada bir sayt boshqasining tokenini ustiga yozib, admin panelda
+# "CSRF verification failed" (403) xatosi chiqadi. Nomlarni ajratamiz.
+CSRF_COOKIE_NAME = config('CSRF_COOKIE_NAME', default='eduhub_csrftoken')
+SESSION_COOKIE_NAME = config('SESSION_COOKIE_NAME', default='eduhub_sessionid')
 SECURE_HSTS_SECONDS = config('SECURE_HSTS_SECONDS', default=31536000 if _IS_PROD else 0, cast=int)
 SECURE_HSTS_INCLUDE_SUBDOMAINS = config('SECURE_HSTS_INCLUDE_SUBDOMAINS', default=_IS_PROD, cast=bool)
 SECURE_HSTS_PRELOAD = config('SECURE_HSTS_PRELOAD', default=_IS_PROD, cast=bool)
