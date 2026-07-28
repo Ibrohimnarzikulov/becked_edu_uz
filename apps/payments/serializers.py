@@ -5,11 +5,27 @@ from .models import Payment
 
 
 class PaymentSerializer(serializers.ModelSerializer):
-    """To'lov — foydalanuvchiga."""
+    """To'lov.
+
+    `user` va `plan_name` — admin ro'yxatida kim va qaysi tarifga to'lov
+    qilganini ko'rsatish uchun (foydalanuvchining o'z tarixida ortiqcha,
+    lekin zarar emas — bitta serializer ikkala view uchun ham yetarli).
+    """
+    user = serializers.SerializerMethodField()
+    plan_name = serializers.CharField(source='get_plan_display', read_only=True)
+
     class Meta:
         model = Payment
-        fields = ('id', 'plan', 'amount', 'screenshot', 'status', 'admin_note', 'created_at')
+        fields = ('id', 'user', 'plan', 'plan_name', 'amount', 'screenshot',
+                   'status', 'admin_note', 'created_at')
         read_only_fields = ('id', 'status', 'admin_note', 'created_at')
+
+    def get_user(self, obj):
+        return {
+            'id': obj.user_id,
+            'username': obj.user.username,
+            'full_name': obj.user.full_name,
+        }
 
 
 class PaymentSubmitSerializer(serializers.Serializer):

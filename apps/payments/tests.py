@@ -63,12 +63,14 @@ class PaymentTests(TestCase):
         self.assertEqual(len(response.data), 1)
 
     def test_admin_list_payments(self):
-        """Admin barcha to'lovlarni ko'radi."""
+        """Admin barcha to'lovlarni ko'radi — kim to'laganini bilishi kerak."""
         Payment.objects.create(user=self.user, plan='student', amount=75000)
         self.client.force_authenticate(self.admin)
         response = self.client.get(reverse('admin-payments'))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['user']['username'], 'student')
+        self.assertEqual(response.data[0]['plan_name'], 'Student')
 
     def test_student_cannot_list_admin_payments(self):
         """Student admin to'lovlarini ko'ra olmaydi."""
