@@ -5,14 +5,13 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.courses.models import CoursePurchase
-
 from .models import Payment
 from .serializers import (
     PaymentSerializer,
     PaymentSubmitSerializer,
     AdminActionSerializer,
 )
+from .services import apply_confirmed_payment
 
 
 class SubmitPaymentView(APIView):
@@ -30,10 +29,14 @@ class SubmitPaymentView(APIView):
             )
 
         data = serializer.validated_data
+        kind = data.get('kind', Payment.KIND_SUBSCRIPTION)
         payment = Payment.objects.create(
             user=request.user,
-            kind=data.get('kind', Payment.KIND_SUBSCRIPTION),
-            plan=data.get('plan', ''),
+            kind=kind,
+            # Barcha muddatlar bir xil (student) tarifni ochadi — faqat
+            # narx/muddat farqlanadi (duration).
+            plan=Payment.PLAN_STUDENT if kind == Payment.KIND_SUBSCRIPTION else '',
+            duration=data.get('duration', ''),
             course=data.get('course'),
             amount=data['amount'],
             screenshot=data.get('screenshot'),
@@ -95,14 +98,7 @@ class AdminPaymentActionView(APIView):
 
         if action == 'confirm':
             payment.status = Payment.STATUS_CONFIRMED
-            if payment.kind == Payment.KIND_COURSE:
-                # Kurs bir martalik sotib olinadi — CoursePurchase yaratiladi.
-                if payment.course_id:
-                    CoursePurchase.objects.get_or_create(user=payment.user, course_id=payment.course_id)
-            else:
-                # Obuna to'lovi — user tarifini yangilash.
-                payment.user.plan = payment.plan
-                payment.user.save(update_fields=['plan'])
+            apply_confirmed_payment(payment)
         else:
             payment.status = Payment.STATUS_REJECTED
 

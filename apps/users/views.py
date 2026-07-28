@@ -77,6 +77,7 @@ class ProfileView(APIView):
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get(self, request):
+        request.user.sync_plan_expiry()
         serializer = UserProfileSerializer(request.user, context={'request': request})
         return Response(serializer.data)
 

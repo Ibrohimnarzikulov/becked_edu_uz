@@ -86,9 +86,9 @@ class UserProfileSerializer(AvatarUrlMixin, serializers.ModelSerializer):
         fields = (
             'id', 'username', 'full_name', 'avatar', 'avatar_url',
             'bio', 'track', 'grade',
-            'role', 'plan', 'is_blocked', 'date_joined',
+            'role', 'plan', 'plan_expires_at', 'is_blocked', 'date_joined',
         )
-        read_only_fields = ('id', 'username', 'role', 'plan', 'is_blocked', 'date_joined')
+        read_only_fields = ('id', 'username', 'role', 'plan', 'plan_expires_at', 'is_blocked', 'date_joined')
         extra_kwargs = {'avatar': {'write_only': True, 'required': False}}
 
 
@@ -100,9 +100,9 @@ class UserSerializer(AvatarUrlMixin, serializers.ModelSerializer):
         model = User
         fields = (
             'id', 'username', 'full_name', 'avatar_url', 'bio',
-            'track', 'grade', 'role', 'plan', 'is_blocked', 'date_joined',
+            'track', 'grade', 'role', 'plan', 'plan_expires_at', 'is_blocked', 'date_joined',
         )
-        read_only_fields = ('id', 'username', 'role', 'plan', 'is_blocked', 'date_joined')
+        read_only_fields = ('id', 'username', 'role', 'plan', 'plan_expires_at', 'is_blocked', 'date_joined')
 
 
 class EduHubRegisterSerializer(RegisterSerializer):

@@ -51,6 +51,7 @@ class DailyLimitView(APIView):
 
     def get(self, request):
         user = request.user
+        user.sync_plan_expiry()
         # Premium va Student — cheksiz
         if user.plan in (user.PLAN_STUDENT, user.PLAN_PREMIUM):
             return Response({
@@ -82,6 +83,7 @@ class WatchLessonView(APIView):
 
     def post(self, request, lesson_id):
         user = request.user
+        user.sync_plan_expiry()
         lesson = get_object_or_404(Lesson, id=lesson_id)
 
         if not _has_course_access(user, lesson.course):

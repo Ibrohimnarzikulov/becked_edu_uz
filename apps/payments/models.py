@@ -38,6 +38,29 @@ class Payment(models.Model):
         PLAN_PREMIUM: 150000,
     }
 
+    # ── Obuna muddati (hafta/oy/yil) ─────────────────────
+    # "Hammasida imkoniyat teng, faqat vaqt masalasi" — barcha muddatlar
+    # bir xil (PLAN_STUDENT) tarifni ochadi, faqat narx va amal qilish
+    # muddati farq qiladi.
+    DURATION_WEEK = 'week'
+    DURATION_MONTH = 'month'
+    DURATION_YEAR = 'year'
+    DURATION_CHOICES = [
+        (DURATION_WEEK, '1 hafta'),
+        (DURATION_MONTH, '1 oy'),
+        (DURATION_YEAR, '1 yil'),
+    ]
+    DURATION_PRICES = {
+        DURATION_WEEK: 9000,
+        DURATION_MONTH: 2100,
+        DURATION_YEAR: 50000,
+    }
+    DURATION_DAYS = {
+        DURATION_WEEK: 7,
+        DURATION_MONTH: 30,
+        DURATION_YEAR: 365,
+    }
+
     KIND_SUBSCRIPTION = 'subscription'
     KIND_COURSE = 'course'
     KIND_CHOICES = [
@@ -49,6 +72,7 @@ class Payment(models.Model):
     kind = models.CharField(_("turi"), max_length=16, choices=KIND_CHOICES, default=KIND_SUBSCRIPTION)
     # Obuna to'lovida ishlatiladi (kind=subscription).
     plan = models.CharField(_("tarif"), max_length=16, choices=PLAN_CHOICES, blank=True, default='')
+    duration = models.CharField(_("muddat"), max_length=8, choices=DURATION_CHOICES, blank=True, default='')
     # Kurs sotib olishda ishlatiladi (kind=course).
     course = models.ForeignKey(
         'courses.Course', on_delete=models.SET_NULL, null=True, blank=True, related_name='payments',
@@ -67,5 +91,10 @@ class Payment(models.Model):
         verbose_name_plural = _("To'lovlar")
 
     def __str__(self):
-        label = self.course.title_uz if self.kind == self.KIND_COURSE and self.course_id else self.get_plan_display()
+        if self.kind == self.KIND_COURSE and self.course_id:
+            label = self.course.title_uz
+        elif self.duration:
+            label = self.get_duration_display()
+        else:
+            label = self.get_plan_display()
         return f"{self.user.username} — {label} ({self.amount} so'm) — {self.get_status_display()}"

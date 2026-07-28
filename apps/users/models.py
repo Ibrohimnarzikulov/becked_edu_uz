@@ -1,6 +1,7 @@
 """Custom User model for EduHub."""
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 
@@ -36,6 +37,9 @@ class User(AbstractUser):
     plan = models.CharField(
         _("tarif"), max_length=16, choices=PLAN_CHOICES, default=PLAN_FREE
     )
+    # Obuna (hafta/oy/yil) qachon tugashini bildiradi. Bo'sh bo'lsa —
+    # muddatsiz (masalan admin qo'lda 'student' qilib qo'ygan bo'lsa).
+    plan_expires_at = models.DateTimeField(_("tarif tugash sanasi"), null=True, blank=True)
     is_blocked = models.BooleanField(_("bloklangan"), default=False)
 
     class Meta:
@@ -57,6 +61,18 @@ class User(AbstractUser):
     @property
     def is_student_user(self):
         return self.role == self.ROLE_STUDENT
+
+    def sync_plan_expiry(self):
+        """Obuna muddati o'tgan bo'lsa — free'ga qaytaradi.
+
+        Fon vazifasi (celery/cron) yo'q loyihada, shuning uchun bu
+        kirishga bog'liq (lazy) tekshiruv: `plan` tekshiriladigan har bir
+        joyda (kunlik limit, dars ko'rish) chaqiriladi.
+        """
+        if self.plan != self.PLAN_FREE and self.plan_expires_at and self.plan_expires_at < timezone.now():
+            self.plan = self.PLAN_FREE
+            self.plan_expires_at = None
+            self.save(update_fields=['plan', 'plan_expires_at'])
 
     def save(self, *args, **kwargs):
         # username har doim kichik harfda

@@ -1,6 +1,9 @@
 """Tests for payments app."""
+from datetime import timedelta
+
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.courses.models import Course, CoursePurchase
@@ -22,35 +25,36 @@ class PaymentTests(TestCase):
         )
 
     def test_submit_payment_success(self):
-        """To'lov so'rovini yuborish."""
+        """To'lov so'rovini yuborish (1 hafta muddat)."""
         self.client.force_authenticate(self.user)
         response = self.client.post(
             reverse('payment-submit'),
-            {'plan': 'student', 'amount': 75000},
+            {'kind': 'subscription', 'duration': 'week', 'amount': 9000},
             format='json',
         )
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 201, response.data)
         self.assertEqual(Payment.objects.count(), 1)
         payment = Payment.objects.first()
         self.assertEqual(payment.status, Payment.STATUS_PENDING)
-        self.assertEqual(payment.plan, 'student')
+        self.assertEqual(payment.duration, 'week')
+        self.assertEqual(payment.plan, 'student')  # barcha muddatlar shu tarifni ochadi
 
     def test_submit_payment_wrong_amount(self):
         """Noto'g'ri summa bilan yuborish — xato."""
         self.client.force_authenticate(self.user)
         response = self.client.post(
             reverse('payment-submit'),
-            {'plan': 'student', 'amount': 50000},  # 75000 bo'lishi kerak
+            {'kind': 'subscription', 'duration': 'week', 'amount': 5000},  # 9000 bo'lishi kerak
             format='json',
         )
         self.assertEqual(response.status_code, 400)
 
-    def test_submit_payment_free_not_allowed(self):
-        """Free tarif uchun to'lov yuborilmaydi."""
+    def test_submit_payment_missing_duration(self):
+        """Muddat tanlanmasa — xato."""
         self.client.force_authenticate(self.user)
         response = self.client.post(
             reverse('payment-submit'),
-            {'plan': 'free', 'amount': 0},
+            {'kind': 'subscription', 'amount': 9000},
             format='json',
         )
         self.assertEqual(response.status_code, 400)
@@ -213,3 +217,91 @@ class CoursePaymentTests(TestCase):
         response = self.client.get(reverse('admin-payments'))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data[0]['course_title'], 'Backend')
+
+
+class SubscriptionDurationTests(TestCase):
+    """Hafta/oy/yil obuna — muddat tugashi bilan."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            username='durationbuyer', password='test1234', plan=User.PLAN_FREE,
+        )
+        self.admin = User.objects.create_user(
+            username='durationadmin', password='admin1234',
+            role=User.ROLE_ADMIN, is_staff=True,
+        )
+
+    def test_confirm_sets_plan_and_expiry(self):
+        payment = Payment.objects.create(
+            user=self.user, kind=Payment.KIND_SUBSCRIPTION,
+            plan='student', duration='week', amount=9000,
+        )
+        self.client.force_authenticate(self.admin)
+        response = self.client.post(
+            reverse('admin-payment-action', kwargs={'payment_id': payment.id}),
+            {'action': 'confirm'}, format='json',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.plan, User.PLAN_STUDENT)
+        self.assertIsNotNone(self.user.plan_expires_at)
+        expected = timezone.now() + timedelta(days=7)
+        self.assertAlmostEqual(
+            self.user.plan_expires_at.timestamp(), expected.timestamp(), delta=10,
+        )
+
+    def test_confirm_extends_existing_active_subscription(self):
+        """Muddati tugamagan obunaga yangi to'lov — mavjud muddat ustiga qo'shiladi."""
+        future = timezone.now() + timedelta(days=5)
+        self.user.plan = User.PLAN_STUDENT
+        self.user.plan_expires_at = future
+        self.user.save()
+
+        payment = Payment.objects.create(
+            user=self.user, kind=Payment.KIND_SUBSCRIPTION,
+            plan='student', duration='week', amount=9000,  # +7 kun
+        )
+        self.client.force_authenticate(self.admin)
+        self.client.post(
+            reverse('admin-payment-action', kwargs={'payment_id': payment.id}),
+            {'action': 'confirm'}, format='json',
+        )
+        self.user.refresh_from_db()
+        expected = future + timedelta(days=7)
+        self.assertAlmostEqual(
+            self.user.plan_expires_at.timestamp(), expected.timestamp(), delta=10,
+        )
+
+    def test_sync_plan_expiry_downgrades_expired_user(self):
+        self.user.plan = User.PLAN_STUDENT
+        self.user.plan_expires_at = timezone.now() - timedelta(days=1)
+        self.user.save()
+
+        self.user.sync_plan_expiry()
+
+        self.assertEqual(self.user.plan, User.PLAN_FREE)
+        self.assertIsNone(self.user.plan_expires_at)
+
+    def test_sync_plan_expiry_keeps_active_user(self):
+        future = timezone.now() + timedelta(days=3)
+        self.user.plan = User.PLAN_STUDENT
+        self.user.plan_expires_at = future
+        self.user.save()
+
+        self.user.sync_plan_expiry()
+
+        self.assertEqual(self.user.plan, User.PLAN_STUDENT)
+        self.assertEqual(self.user.plan_expires_at, future)
+
+    def test_daily_limit_reflects_expiry(self):
+        """Muddati o'tgan foydalanuvchi kunlik-limit endpointida free bo'lib qoladi."""
+        self.user.plan = User.PLAN_STUDENT
+        self.user.plan_expires_at = timezone.now() - timedelta(days=1)
+        self.user.save()
+
+        self.client.force_authenticate(self.user)
+        response = self.client.get(reverse('daily-limit'))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['plan'], 'free')
+        self.assertEqual(response.data['limit'], 3)
