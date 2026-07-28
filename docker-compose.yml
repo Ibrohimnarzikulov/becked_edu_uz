@@ -56,6 +56,20 @@ services:
     depends_on:
       - backend
 
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: eduhub_bot
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    # Standart entrypoint (postgres kutish + migrate + static) ishlatiladi,
+    # keyin gunicorn o'rniga botni ishga tushiradi.
+    command: python manage.py runbot
+
 volumes:
   postgres_data:
     name: eduhub_db_data

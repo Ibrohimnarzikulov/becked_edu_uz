@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     'apps.chat',
     'apps.exams',
     'apps.school',
+    'apps.telegrambot',
 ]
 
 MIDDLEWARE = [
@@ -200,6 +201,11 @@ SWAGGER_SETTINGS = {
 # ── CORS ───────────────────────────────────────────
 CORS_ALLOW_ALL_ORIGINS = config('CORS_ALLOW_ALL', default=True, cast=bool)
 CORS_ALLOW_CREDENTIALS = True
+
+# ── Telegram bot ───────────────────────────────────
+# `python manage.py runbot` shu tokenni ishlatadi. Bo'sh bo'lsa bot
+# ishga tushmaydi (xato bilan to'xtaydi, backend'ga ta'sir qilmaydi).
+TELEGRAM_BOT_TOKEN = config('TELEGRAM_BOT_TOKEN', default='')
 
 # Faqat ruxsat berilgan domenlar (CORS_ALLOW_ALL=False bo'lganda ishlaydi)
 CORS_ALLOWED_ORIGINS = config(
