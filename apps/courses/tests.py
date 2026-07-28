@@ -5,7 +5,7 @@ from django.urls import reverse
 from rest_framework.test import APIClient
 
 from apps.users.models import User
-from .models import Course, Lesson, Test, Question, Choice, LessonProgress
+from .models import Course, Lesson, Test, Question, Choice, LessonProgress, CoursePurchase
 
 
 def make_test_data():
@@ -313,3 +313,88 @@ class AdminCourseViewTests(TestCase):
         self.client.force_authenticate(self.student)
         response = self.client.get(reverse('admin-progress-list'))
         self.assertEqual(response.status_code, 403)
+
+class CoursePurchaseTests(TestCase):
+    """`requires_purchase` kurslar — faqat sotib olganlarga ochiladi."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.student = User.objects.create_user(
+            username='buyer', password='test1234', role=User.ROLE_STUDENT,
+        )
+        self.admin = User.objects.create_user(
+            username='shopadmin', password='test1234',
+            role=User.ROLE_ADMIN, is_staff=True,
+        )
+        self.course = Course.objects.create(
+            slug='backend', title_uz='Backend', type='IT',
+            requires_purchase=True, price=400000,
+        )
+        self.lesson = Lesson.objects.create(
+            course=self.course, title_uz='1-dars',
+            youtube_id='xyz', duration='10:00', order=0,
+        )
+        self.test_obj = Test.objects.create(
+            lesson=self.lesson, title_uz='Dars testi', subject='Backend', type='IT',
+        )
+        q = Question.objects.create(test=self.test_obj, text_uz='Q1', order=0)
+        Choice.objects.create(question=q, text_uz='A', is_correct=True, order=0)
+        Choice.objects.create(question=q, text_uz='B', is_correct=False, order=1)
+
+    def test_lessons_hidden_when_not_purchased(self):
+        """Sotib olinmagan kursda darslar ro'yxati bo'sh, narx ko'rinadi."""
+        self.client.force_authenticate(self.student)
+        response = self.client.get(reverse('course-list'))
+        course_data = next(c for c in response.data if c['slug'] == 'backend')
+        self.assertEqual(course_data['lessons'], [])
+        self.assertFalse(course_data['isPurchased'])
+        self.assertEqual(course_data['price'], 400000)
+
+    def test_lessons_visible_after_purchase(self):
+        """Sotib olingach — darslar ko'rinadi."""
+        CoursePurchase.objects.create(user=self.student, course=self.course)
+        self.client.force_authenticate(self.student)
+        response = self.client.get(reverse('course-list'))
+        course_data = next(c for c in response.data if c['slug'] == 'backend')
+        self.assertEqual(len(course_data['lessons']), 1)
+        self.assertTrue(course_data['isPurchased'])
+
+    def test_watch_lesson_blocked_without_purchase(self):
+        """Sotib olinmagan kurs darsini 'ko'rdim' deb belgilab bo'lmaydi."""
+        self.client.force_authenticate(self.student)
+        response = self.client.post(
+            reverse('watch-lesson', kwargs={'lesson_id': self.lesson.id})
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.data['error'], 'purchase_required')
+
+    def test_watch_lesson_allowed_after_purchase(self):
+        CoursePurchase.objects.create(user=self.student, course=self.course)
+        self.client.force_authenticate(self.student)
+        response = self.client.post(
+            reverse('watch-lesson', kwargs={'lesson_id': self.lesson.id})
+        )
+        self.assertEqual(response.status_code, 200)
+
+    def test_lesson_test_blocked_without_purchase(self):
+        self.client.force_authenticate(self.student)
+        response = self.client.get(
+            reverse('lesson-test', kwargs={'lesson_id': self.lesson.id})
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_submit_test_blocked_without_purchase(self):
+        self.client.force_authenticate(self.student)
+        response = self.client.post(
+            reverse('submit-test', kwargs={'lesson_id': self.lesson.id}),
+            {'answers': {}}, format='json',
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_admin_bypasses_purchase_requirement(self):
+        """Admin sotib olmasa ham kursga kira oladi (nazorat uchun)."""
+        self.client.force_authenticate(self.admin)
+        response = self.client.post(
+            reverse('watch-lesson', kwargs={'lesson_id': self.lesson.id})
+        )
+        self.assertEqual(response.status_code, 200)

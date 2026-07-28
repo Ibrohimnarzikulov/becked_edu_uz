@@ -5,6 +5,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.courses.models import CoursePurchase
+
 from .models import Payment
 from .serializers import (
     PaymentSerializer,
@@ -30,7 +32,9 @@ class SubmitPaymentView(APIView):
         data = serializer.validated_data
         payment = Payment.objects.create(
             user=request.user,
-            plan=data['plan'],
+            kind=data.get('kind', Payment.KIND_SUBSCRIPTION),
+            plan=data.get('plan', ''),
+            course=data.get('course'),
             amount=data['amount'],
             screenshot=data.get('screenshot'),
         )
@@ -91,9 +95,14 @@ class AdminPaymentActionView(APIView):
 
         if action == 'confirm':
             payment.status = Payment.STATUS_CONFIRMED
-            # User tarifini yangilash
-            payment.user.plan = payment.plan
-            payment.user.save(update_fields=['plan'])
+            if payment.kind == Payment.KIND_COURSE:
+                # Kurs bir martalik sotib olinadi — CoursePurchase yaratiladi.
+                if payment.course_id:
+                    CoursePurchase.objects.get_or_create(user=payment.user, course_id=payment.course_id)
+            else:
+                # Obuna to'lovi — user tarifini yangilash.
+                payment.user.plan = payment.plan
+                payment.user.save(update_fields=['plan'])
         else:
             payment.status = Payment.STATUS_REJECTED
 

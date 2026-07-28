@@ -38,8 +38,22 @@ class Payment(models.Model):
         PLAN_PREMIUM: 150000,
     }
 
+    KIND_SUBSCRIPTION = 'subscription'
+    KIND_COURSE = 'course'
+    KIND_CHOICES = [
+        (KIND_SUBSCRIPTION, 'Obuna (tarif)'),
+        (KIND_COURSE, 'Kurs sotib olish'),
+    ]
+
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='payments')
-    plan = models.CharField(_("tarif"), max_length=16, choices=PLAN_CHOICES)
+    kind = models.CharField(_("turi"), max_length=16, choices=KIND_CHOICES, default=KIND_SUBSCRIPTION)
+    # Obuna to'lovida ishlatiladi (kind=subscription).
+    plan = models.CharField(_("tarif"), max_length=16, choices=PLAN_CHOICES, blank=True, default='')
+    # Kurs sotib olishda ishlatiladi (kind=course).
+    course = models.ForeignKey(
+        'courses.Course', on_delete=models.SET_NULL, null=True, blank=True, related_name='payments',
+        verbose_name=_("kurs"),
+    )
     amount = models.PositiveIntegerField(_("miqdor (so'm)"))
     screenshot = models.ImageField(_("chek rasmi"), upload_to=payment_screenshot_path, blank=True, null=True)
     status = models.CharField(_("holat"), max_length=16, choices=STATUS_CHOICES, default=STATUS_PENDING)
@@ -53,4 +67,5 @@ class Payment(models.Model):
         verbose_name_plural = _("To'lovlar")
 
     def __str__(self):
-        return f"{self.user.username} — {self.get_plan_display()} ({self.amount} so'm) — {self.get_status_display()}"
+        label = self.course.title_uz if self.kind == self.KIND_COURSE and self.course_id else self.get_plan_display()
+        return f"{self.user.username} — {label} ({self.amount} so'm) — {self.get_status_display()}"

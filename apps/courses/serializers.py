@@ -1,7 +1,7 @@
 """Serializers for courses app."""
 from rest_framework import serializers
 
-from .models import Course, Lesson, Test, Question, Choice, LessonProgress
+from .models import Course, Lesson, Test, Question, Choice, LessonProgress, CoursePurchase
 
 
 class ChoiceSerializer(serializers.ModelSerializer):
@@ -97,12 +97,19 @@ class LessonSerializer(serializers.ModelSerializer):
 
 
 class CourseListSerializer(serializers.ModelSerializer):
-    """Kurs — darslar bilan."""
-    lessons = LessonSerializer(many=True, read_only=True)
+    """Kurs — darslar bilan.
+
+    `requires_purchase=True` bo'lgan kursda, foydalanuvchi uni sotib
+    olmagan bo'lsa, `lessons` bo'sh qaytadi — video/dars mazmuni
+    ko'rinmaydi, faqat narx va "sotib olinmagan" holati ko'rsatiladi.
+    """
+    lessons = serializers.SerializerMethodField()
+    is_purchased = serializers.SerializerMethodField()
 
     class Meta:
         model = Course
-        fields = ('id', 'slug', 'title_uz', 'icon', 'type', 'lessons')
+        fields = ('id', 'slug', 'title_uz', 'icon', 'type',
+                   'requires_purchase', 'price', 'is_purchased', 'lessons')
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -112,8 +119,24 @@ class CourseListSerializer(serializers.ModelSerializer):
             'title': data['title_uz'],
             'icon': data['icon'],
             'type': data['type'],
+            'requiresPurchase': data['requires_purchase'],
+            'price': data['price'],
+            'isPurchased': data['is_purchased'],
             'lessons': data['lessons'],
         }
+
+    def get_is_purchased(self, obj):
+        if not obj.requires_purchase:
+            return True
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return False
+        return CoursePurchase.objects.filter(user=request.user, course=obj).exists()
+
+    def get_lessons(self, obj):
+        if obj.requires_purchase and not self.get_is_purchased(obj):
+            return []
+        return LessonSerializer(obj.lessons.all(), many=True, context=self.context).data
 
 
 class TestSubmitSerializer(serializers.Serializer):

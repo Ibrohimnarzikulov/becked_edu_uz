@@ -1,6 +1,6 @@
 """Admin for courses."""
 from django.contrib import admin
-from .models import Course, Lesson, Test, Question, Choice, LessonProgress
+from .models import Course, Lesson, Test, Question, Choice, LessonProgress, CoursePurchase
 
 
 class LessonInline(admin.TabularInline):
@@ -20,10 +20,18 @@ class QuestionInline(admin.TabularInline):
 
 @admin.register(Course)
 class CourseAdmin(admin.ModelAdmin):
-    list_display = ('title_uz', 'type', 'icon', 'order', 'is_active')
-    list_filter = ('type', 'is_active')
+    list_display = ('title_uz', 'type', 'icon', 'requires_purchase', 'price', 'order', 'is_active')
+    list_filter = ('type', 'is_active', 'requires_purchase')
+    list_editable = ('price', 'requires_purchase')
     search_fields = ('title_uz', 'title_ru', 'title_en', 'slug')
     inlines = [LessonInline]
+
+
+@admin.register(CoursePurchase)
+class CoursePurchaseAdmin(admin.ModelAdmin):
+    list_display = ('user', 'course', 'purchased_at')
+    list_filter = ('course',)
+    search_fields = ('user__username', 'course__title_uz')
 
 
 @admin.register(Lesson)

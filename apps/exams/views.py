@@ -6,6 +6,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.courses.models import CoursePurchase
+
 from .models import Test, Score
 from .serializers import TestSerializer, ScoreSerializer
 
@@ -14,6 +16,22 @@ User = get_user_model()
 
 def _is_staff_role(user):
     return getattr(user, 'is_admin', False) or getattr(user, 'is_teacher', False)
+
+
+def _visible_tests_for(user, qs):
+    """Kursga bog'liq (course.requires_purchase) testlarni faqat sotib
+    olganlar yoki xodimlar ko'radi. Kursga bog'liq bo'lmagan testlar —
+    hammaga ochiq."""
+    if _is_staff_role(user):
+        return qs
+    purchased_course_ids = set(
+        CoursePurchase.objects.filter(user=user).values_list('course_id', flat=True)
+    )
+    locked_ids = [
+        t.id for t in qs.select_related('course')
+        if t.course_id and t.course.requires_purchase and t.course_id not in purchased_course_ids
+    ]
+    return qs.exclude(id__in=locked_ids)
 
 
 class TestListCreateView(APIView):
@@ -25,6 +43,7 @@ class TestListCreateView(APIView):
         type_filter = request.query_params.get('type')
         if type_filter:
             qs = qs.filter(type=type_filter)
+        qs = _visible_tests_for(request.user, qs)
         return Response(TestSerializer(qs, many=True).data)
 
     def post(self, request):
@@ -43,9 +62,17 @@ class TestDetailView(APIView):
 
     def get(self, request, test_id):
         try:
-            test = Test.objects.get(id=test_id)
+            test = Test.objects.select_related('course').get(id=test_id)
         except Test.DoesNotExist:
             return Response({'error': 'Test topilmadi'}, status=status.HTTP_404_NOT_FOUND)
+
+        if (test.course_id and test.course.requires_purchase
+                and not _is_staff_role(request.user)
+                and not CoursePurchase.objects.filter(user=request.user, course=test.course).exists()):
+            return Response({'error': 'purchase_required',
+                              'message': "Bu testni ko'rish uchun avval kursni sotib oling."},
+                             status=status.HTTP_403_FORBIDDEN)
+
         return Response(TestSerializer(test).data)
 
     def delete(self, request, test_id):

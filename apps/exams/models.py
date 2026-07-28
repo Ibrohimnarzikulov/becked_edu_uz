@@ -21,6 +21,14 @@ class Test(models.Model):
     subject = models.CharField(_("fan"), max_length=64, blank=True)
     type = models.CharField(_("tur"), max_length=16, choices=TYPE_CHOICES, default=TYPE_IT)
     questions = models.JSONField(_("savollar"), default=list, blank=True)
+
+    # Kursga bog'liq bo'lsa (masalan Backend testi) — faqat shu kursni
+    # sotib olgan foydalanuvchilarga ko'rinadi. Bo'sh bo'lsa — hammaga ochiq.
+    course = models.ForeignKey(
+        'courses.Course', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='exam_tests',
+        verbose_name=_("bog'liq kurs"),
+    )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='created_tests'

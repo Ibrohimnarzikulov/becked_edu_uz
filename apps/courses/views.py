@@ -10,7 +10,7 @@ from rest_framework.views import APIView
 
 from apps.users.permissions import IsAdmin
 
-from .models import Course, Lesson, Test, Question, Choice, LessonProgress
+from .models import Course, Lesson, Test, Question, Choice, LessonProgress, CoursePurchase
 from .serializers import (
     CourseListSerializer,
     TestDetailSerializer,
@@ -21,6 +21,15 @@ from .serializers import (
 
 # ── FREE PLAN LIMIT ────────────────────────────────
 FREE_DAILY_LIMIT = 3
+
+
+def _has_course_access(user, course):
+    """`requires_purchase` kurslarda — sotib olganmi yoki admin/o'qituvchimi."""
+    if not course.requires_purchase:
+        return True
+    if user.is_admin or user.is_teacher:
+        return True
+    return CoursePurchase.objects.filter(user=user, course=course).exists()
 
 
 class CourseListView(APIView):
@@ -74,6 +83,13 @@ class WatchLessonView(APIView):
     def post(self, request, lesson_id):
         user = request.user
         lesson = get_object_or_404(Lesson, id=lesson_id)
+
+        if not _has_course_access(user, lesson.course):
+            return Response({
+                'error': 'purchase_required',
+                'message': "Bu kursni ko'rish uchun avval sotib oling.",
+                'course_price': lesson.course.price,
+            }, status=status.HTTP_403_FORBIDDEN)
 
         # Premium/Student — cheksiz
         if user.plan not in (user.PLAN_STUDENT, user.PLAN_PREMIUM):
@@ -133,6 +149,10 @@ class LessonTestView(APIView):
 
     def get(self, request, lesson_id):
         lesson = get_object_or_404(Lesson, id=lesson_id)
+        if not _has_course_access(request.user, lesson.course):
+            return Response({'error': 'purchase_required',
+                              'message': "Bu kursni ko'rish uchun avval sotib oling."},
+                             status=status.HTTP_403_FORBIDDEN)
         try:
             test = lesson.test
         except Test.DoesNotExist:
@@ -150,6 +170,10 @@ class SubmitTestView(APIView):
     def post(self, request, lesson_id):
         user = request.user
         lesson = get_object_or_404(Lesson, id=lesson_id)
+        if not _has_course_access(user, lesson.course):
+            return Response({'error': 'purchase_required',
+                              'message': "Bu kursni ko'rish uchun avval sotib oling."},
+                             status=status.HTTP_403_FORBIDDEN)
         try:
             test = lesson.test
         except Test.DoesNotExist:

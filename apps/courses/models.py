@@ -22,6 +22,15 @@ class Course(models.Model):
     type = models.CharField(_("tur"), max_length=16, choices=TYPE_CHOICES, default=TYPE_IT)
     order = models.PositiveIntegerField(_("tartib"), default=0)
     is_active = models.BooleanField(_("aktiv"), default=True)
+
+    # Ba'zi kurslar (masalan Backend, Frontend) obunadan mustaqil —
+    # alohida bir martalik to'lov bilan sotib olinadi.
+    requires_purchase = models.BooleanField(
+        _("alohida sotib olinadi"), default=False,
+        help_text=_("Yoqilsa, bu kursning darslari faqat sotib olganlarga ochiladi."),
+    )
+    price = models.PositiveIntegerField(_("narx (so'm)"), default=0)
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -142,3 +151,23 @@ class LessonProgress(models.Model):
 
     def __str__(self):
         return f'{self.user.username} — {self.lesson.title_uz} ({self.status})'
+
+
+class CoursePurchase(models.Model):
+    """Foydalanuvchi bir martalik sotib olgan kurs (obunadan mustaqil).
+
+    Admin to'lovni tasdiqlaganda yaratiladi (apps.payments). Muddatsiz —
+    bir marta sotib olingach, kursga kirish doimiy ochiq qoladi.
+    """
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='course_purchases')
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='purchases')
+    purchased_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [('user', 'course')]
+        ordering = ['-purchased_at']
+        verbose_name = _("Kurs xaridi")
+        verbose_name_plural = _("Kurs xaridlari")
+
+    def __str__(self):
+        return f'{self.user.username} — {self.course.title_uz}'
