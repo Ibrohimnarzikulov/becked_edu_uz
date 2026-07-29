@@ -17,13 +17,25 @@ from telegram.ext import (
 )
 
 from apps.telegrambot.models import TelegramLink
-from apps.telegrambot.services import build_todo_message
+from apps.telegrambot.services import (
+    build_admin_stats_message,
+    build_todo_message,
+    linked_users_text,
+)
 
 User = get_user_model()
 
 USERNAME, PASSWORD = range(2)
 
-MENU = ReplyKeyboardMarkup([['📋 Vazifalarim'], ['🚪 Chiqish']], resize_keyboard=True)
+STUDENT_MENU = ReplyKeyboardMarkup([['📋 Vazifalarim'], ['🚪 Chiqish']], resize_keyboard=True)
+ADMIN_MENU = ReplyKeyboardMarkup(
+    [['📋 Vazifalarim'], ['📊 Statistika', '🔗 Ulanganlar'], ['🚪 Chiqish']],
+    resize_keyboard=True,
+)
+
+
+def _menu_for(user):
+    return ADMIN_MENU if user.is_admin else STUDENT_MENU
 
 
 def _get_linked_user(telegram_id):
@@ -56,7 +68,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user:
         await update.message.reply_text(
             f"Salom, {user.full_name or user.username}! 👋\nKerakli bo'limni tanlang:",
-            reply_markup=MENU,
+            reply_markup=_menu_for(user),
         )
         return ConversationHandler.END
 
@@ -95,7 +107,7 @@ async def receive_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await sync_to_async(_link_telegram)(update.effective_user.id, user)
     await update.message.reply_text(
         f"✅ Muvaffaqiyatli bog'landi, {user.full_name or user.username}!",
-        reply_markup=MENU,
+        reply_markup=_menu_for(user),
     )
     return ConversationHandler.END
 
@@ -114,7 +126,31 @@ async def show_todo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Avval /start orqali tizimga kiring.")
         return
     text = await sync_to_async(build_todo_message)(user)
-    await update.message.reply_text(text, parse_mode='Markdown', reply_markup=MENU)
+    await update.message.reply_text(text, parse_mode='Markdown', reply_markup=_menu_for(user))
+
+
+async def show_admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = await sync_to_async(_get_linked_user)(update.effective_user.id)
+    if not user:
+        await update.message.reply_text("Avval /start orqali tizimga kiring.")
+        return
+    if not user.is_admin:
+        await update.message.reply_text("Bu bo'lim faqat adminlar uchun.")
+        return
+    text = await sync_to_async(build_admin_stats_message)()
+    await update.message.reply_text(text, parse_mode='Markdown', reply_markup=_menu_for(user))
+
+
+async def show_linked_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = await sync_to_async(_get_linked_user)(update.effective_user.id)
+    if not user:
+        await update.message.reply_text("Avval /start orqali tizimga kiring.")
+        return
+    if not user.is_admin:
+        await update.message.reply_text("Bu bo'lim faqat adminlar uchun.")
+        return
+    text = await sync_to_async(linked_users_text)()
+    await update.message.reply_text(text, parse_mode='Markdown', reply_markup=_menu_for(user))
 
 
 async def logout(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -147,6 +183,10 @@ class Command(BaseCommand):
         application.add_handler(conv)
         application.add_handler(MessageHandler(filters.Regex('^📋 Vazifalarim$'), show_todo))
         application.add_handler(CommandHandler('vazifalar', show_todo))
+        application.add_handler(MessageHandler(filters.Regex('^📊 Statistika$'), show_admin_stats))
+        application.add_handler(CommandHandler('statistika', show_admin_stats))
+        application.add_handler(MessageHandler(filters.Regex('^🔗 Ulanganlar$'), show_linked_users))
+        application.add_handler(CommandHandler('ulanganlar', show_linked_users))
         application.add_handler(MessageHandler(filters.Regex('^🚪 Chiqish$'), logout))
         application.add_handler(CommandHandler('logout', logout))
 

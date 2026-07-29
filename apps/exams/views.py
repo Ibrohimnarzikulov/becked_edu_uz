@@ -18,20 +18,18 @@ def _is_staff_role(user):
     return getattr(user, 'is_admin', False) or getattr(user, 'is_teacher', False)
 
 
-def _visible_tests_for(user, qs):
-    """Kursga bog'liq (course.requires_purchase) testlarni faqat sotib
-    olganlar yoki xodimlar ko'radi. Kursga bog'liq bo'lmagan testlar —
-    hammaga ochiq."""
+def _locked_test_ids(user, qs):
+    """Kursga bog'liq (course.requires_purchase) testlardan qaysilari
+    sotib olinmagan — shular ID to'plami. Xodimlar uchun hammasi ochiq."""
     if _is_staff_role(user):
-        return qs
+        return set()
     purchased_course_ids = set(
         CoursePurchase.objects.filter(user=user).values_list('course_id', flat=True)
     )
-    locked_ids = [
+    return {
         t.id for t in qs.select_related('course')
         if t.course_id and t.course.requires_purchase and t.course_id not in purchased_course_ids
-    ]
-    return qs.exclude(id__in=locked_ids)
+    }
 
 
 class TestListCreateView(APIView):
@@ -43,8 +41,10 @@ class TestListCreateView(APIView):
         type_filter = request.query_params.get('type')
         if type_filter:
             qs = qs.filter(type=type_filter)
-        qs = _visible_tests_for(request.user, qs)
-        return Response(TestSerializer(qs, many=True).data)
+        locked_ids = _locked_test_ids(request.user, qs)
+        return Response(
+            TestSerializer(qs, many=True, context={'locked_test_ids': locked_ids}).data
+        )
 
     def post(self, request):
         if not _is_staff_role(request.user):

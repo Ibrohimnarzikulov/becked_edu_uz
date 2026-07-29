@@ -74,7 +74,9 @@ class CourseGatedTestsTests(APITestCase):
             requires_purchase=True, price=400000,
         )
         self.locked_test = Test.objects.create(
-            title='Backend testi', type='IT', questions=[], course=self.course,
+            title='Backend testi', type='IT',
+            questions=[{'q': 'Savol?', 'options': ['A', 'B'], 'answer': 0}],
+            course=self.course,
         )
         self.open_test = Test.objects.create(title='Ochiq test', type='IT', questions=[])
 
@@ -82,24 +84,37 @@ class CourseGatedTestsTests(APITestCase):
         res = self.client.post('/api/auth/login/', {'username': user.username, 'password': 'pass1234'}, format='json')
         self.client.credentials(HTTP_AUTHORIZATION='Bearer ' + res.data['access'])
 
-    def test_locked_test_hidden_from_list_without_purchase(self):
+    def test_locked_test_still_visible_but_marked_locked(self):
+        """Sotib olinmagan test ro'yxatdan yashirilmaydi — locked=True, savolsiz."""
         self._auth(self.student)
-        titles = [t['title'] for t in self.client.get('/api/tests/').data]
+        data = self.client.get('/api/tests/').data
+        titles = [t['title'] for t in data]
         self.assertIn('Ochiq test', titles)
-        self.assertNotIn('Backend testi', titles)
+        self.assertIn('Backend testi', titles)  # endi yashirilmaydi
 
-    def test_locked_test_visible_after_purchase(self):
+        locked = next(t for t in data if t['title'] == 'Backend testi')
+        self.assertTrue(locked['locked'])
+        self.assertEqual(locked['questions'], [])  # savollar berilmaydi
+        self.assertEqual(locked['course_price'], 400000)
+
+        open_test = next(t for t in data if t['title'] == 'Ochiq test')
+        self.assertFalse(open_test['locked'])
+
+    def test_locked_test_unlocked_after_purchase(self):
         CoursePurchase.objects.create(user=self.student, course=self.course)
         self._auth(self.student)
-        titles = [t['title'] for t in self.client.get('/api/tests/').data]
-        self.assertIn('Backend testi', titles)
+        data = self.client.get('/api/tests/').data
+        unlocked = next(t for t in data if t['title'] == 'Backend testi')
+        self.assertFalse(unlocked['locked'])
+        self.assertEqual(len(unlocked['questions']), 1)  # endi savollar ko'rinadi
 
     def test_locked_test_detail_blocked_without_purchase(self):
         self._auth(self.student)
         res = self.client.get(f'/api/tests/{self.locked_test.id}/')
         self.assertEqual(res.status_code, 403)
 
-    def test_admin_sees_locked_test_without_purchase(self):
+    def test_admin_sees_locked_test_as_unlocked(self):
         self._auth(self.admin)
-        titles = [t['title'] for t in self.client.get('/api/tests/').data]
-        self.assertIn('Backend testi', titles)
+        data = self.client.get('/api/tests/').data
+        test = next(t for t in data if t['title'] == 'Backend testi')
+        self.assertFalse(test['locked'])

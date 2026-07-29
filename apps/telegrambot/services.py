@@ -1,7 +1,14 @@
 """Bot uchun ma'lumot yig'ish — handler'lardan ajratilgan (test qilish oson bo'lsin uchun)."""
+from django.contrib.auth import get_user_model
+
 from apps.courses.models import CoursePurchase
 from apps.exams.models import Test as ExamTest
+from apps.payments.models import Payment
 from apps.school.models import Assignment
+
+from .models import TelegramLink
+
+User = get_user_model()
 
 
 def pending_assignments_text(user):
@@ -54,3 +61,47 @@ def build_todo_message(user):
     if tests:
         parts.append("📝 *Topshirilmagan testlar:*\n" + tests)
     return "\n\n".join(parts)
+
+
+def build_admin_stats_message():
+    """Faqat admin uchun — bot va sayt bo'yicha umumiy statistika."""
+    total_users = User.objects.count()
+    students = User.objects.filter(role=User.ROLE_STUDENT).count()
+    teachers = User.objects.filter(role=User.ROLE_TEACHER).count()
+    admins = User.objects.filter(role=User.ROLE_ADMIN).count()
+    blocked = User.objects.filter(is_blocked=True).count()
+
+    linked = TelegramLink.objects.count()
+
+    pending_payments = Payment.objects.filter(status=Payment.STATUS_PENDING).count()
+    confirmed_payments = Payment.objects.filter(status=Payment.STATUS_CONFIRMED).count()
+
+    active_subs = User.objects.filter(plan=User.PLAN_STUDENT).count()
+    course_purchases = CoursePurchase.objects.count()
+
+    return (
+        "📊 *EduHub statistikasi*\n\n"
+        f"👥 Jami foydalanuvchilar: *{total_users}*\n"
+        f"   • O'quvchi: {students}\n"
+        f"   • O'qituvchi: {teachers}\n"
+        f"   • Admin: {admins}\n"
+        f"   • Bloklangan: {blocked}\n\n"
+        f"🤖 Botga ulangan (login qilgan): *{linked}*\n\n"
+        f"💳 To'lovlar:\n"
+        f"   • Kutilmoqda: {pending_payments}\n"
+        f"   • Tasdiqlangan: {confirmed_payments}\n\n"
+        f"🎓 Faol obunalar: {active_subs}\n"
+        f"📦 Sotib olingan kurslar: {course_purchases}"
+    )
+
+
+def linked_users_text():
+    """Botga ulangan foydalanuvchilar ro'yxati (admin uchun)."""
+    links = TelegramLink.objects.select_related('user').order_by('-linked_at')[:30]
+    if not links:
+        return "Hozircha hech kim botga ulanmagan."
+    lines = [
+        f"• {l.user.full_name or l.user.username} (@{l.user.username}) — {l.linked_at.strftime('%Y-%m-%d %H:%M')}"
+        for l in links
+    ]
+    return "🔗 *Botga ulangan foydalanuvchilar:*\n\n" + "\n".join(lines)
