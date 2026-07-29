@@ -52,7 +52,7 @@ class Payment(models.Model):
     ]
     DURATION_PRICES = {
         DURATION_WEEK: 9000,
-        DURATION_MONTH: 2100,
+        DURATION_MONTH: 21000,
         DURATION_YEAR: 50000,
     }
     DURATION_DAYS = {
