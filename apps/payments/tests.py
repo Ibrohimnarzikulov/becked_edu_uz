@@ -1,6 +1,7 @@
 """Tests for payments app."""
 from datetime import timedelta
 
+from django.contrib.admin.sites import AdminSite
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -8,6 +9,7 @@ from rest_framework.test import APIClient
 
 from apps.courses.models import Course, CoursePurchase
 from apps.users.models import User
+from .admin import PaymentAdmin
 from .models import Payment
 
 
@@ -305,3 +307,89 @@ class SubscriptionDurationTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['plan'], 'free')
         self.assertEqual(response.data['limit'], 3)
+
+
+class PaymentAdminDirectEditTests(TestCase):
+    """Production'da haqiqiy bug: admin Payment forma ichida `status`ni
+    to'g'ridan-to'g'ri "Tasdiqlandi" qilib saqlasa (bulk "Tasdiqlash"
+    action'dan foydalanmasdan), CoursePurchase/obuna baribir yaratilishi
+    kerak. Avval save_model() override qilinmagani uchun bu holatda
+    hech narsa yaratilmasdi — foydalanuvchi to'lagan, admin "tasdiqladi"
+    deb hisoblagan, lekin sayt hamon "sotib olmadingiz" derdi."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username='admineditbuyer', password='pass1234')
+        self.course = Course.objects.create(
+            slug='admin-edit-course', title_uz='Admin Edit Course', type='IT',
+            requires_purchase=True, price=200000,
+        )
+        self.admin = PaymentAdmin(Payment, AdminSite())
+
+    def test_direct_status_edit_creates_course_purchase(self):
+        payment = Payment.objects.create(
+            user=self.user, kind=Payment.KIND_COURSE, course=self.course, amount=200000,
+        )
+        payment.status = Payment.STATUS_CONFIRMED
+
+        class FakeForm:
+            changed_data = ['status']
+
+        self.admin.save_model(request=None, obj=payment, form=FakeForm(), change=True)
+
+        self.assertTrue(
+            CoursePurchase.objects.filter(user=self.user, course=self.course).exists()
+        )
+
+    def test_direct_status_edit_extends_subscription(self):
+        payment = Payment.objects.create(
+            user=self.user, kind=Payment.KIND_SUBSCRIPTION,
+            plan='student', duration='week', amount=9000,
+        )
+        payment.status = Payment.STATUS_CONFIRMED
+
+        class FakeForm:
+            changed_data = ['status']
+
+        self.admin.save_model(request=None, obj=payment, form=FakeForm(), change=True)
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.plan, User.PLAN_STUDENT)
+        self.assertIsNotNone(self.user.plan_expires_at)
+
+    def test_editing_other_field_does_not_reapply(self):
+        """Status allaqachon 'confirmed', boshqa maydon (admin_note)
+        o'zgarsa — qayta ishlov berilmaydi (obuna ikki marta
+        uzaytirilib ketmasin)."""
+        payment = Payment.objects.create(
+            user=self.user, kind=Payment.KIND_COURSE, course=self.course,
+            amount=200000, status=Payment.STATUS_CONFIRMED,
+        )
+        CoursePurchase.objects.filter(user=self.user, course=self.course).delete()
+
+        payment.admin_note = 'izoh qo\'shildi'
+
+        class FakeForm:
+            changed_data = ['admin_note']
+
+        self.admin.save_model(request=None, obj=payment, form=FakeForm(), change=True)
+
+        self.assertFalse(
+            CoursePurchase.objects.filter(user=self.user, course=self.course).exists()
+        )
+
+    def test_creating_already_confirmed_payment_applies_immediately(self):
+        """Admin yangi to'lov qo'shib, darhol 'Tasdiqlandi' holatida
+        saqlasa (change=False) — bu ham ishlov berilishi kerak."""
+        payment = Payment(
+            user=self.user, kind=Payment.KIND_COURSE, course=self.course,
+            amount=200000, status=Payment.STATUS_CONFIRMED,
+        )
+
+        class FakeForm:
+            changed_data = ['user', 'kind', 'course', 'amount', 'status']
+
+        self.admin.save_model(request=None, obj=payment, form=FakeForm(), change=False)
+
+        self.assertTrue(
+            CoursePurchase.objects.filter(user=self.user, course=self.course).exists()
+        )
