@@ -157,7 +157,7 @@ class AdminUserSerializer(AvatarUrlMixin, serializers.ModelSerializer):
         model = User
         fields = (
             'id', 'username', 'full_name', 'avatar_url', 'role', 'plan',
-            'track', 'grade', 'is_blocked', 'date_joined',
+            'plan_expires_at', 'track', 'grade', 'is_blocked', 'date_joined',
         )
         read_only_fields = fields
 

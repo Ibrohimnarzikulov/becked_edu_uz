@@ -9,18 +9,18 @@ from .models import User
 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
-    list_display = ('username', 'full_name', 'role', 'plan', 'is_blocked', 'is_staff', 'date_joined')
+    list_display = ('username', 'full_name', 'role', 'plan', 'plan_expires_at', 'is_blocked', 'is_staff', 'date_joined')
     list_filter = ('role', 'plan', 'is_blocked', 'is_staff', 'is_superuser')
     search_fields = ('username', 'full_name', 'track', 'grade')
     ordering = ('-date_joined',)
 
     fieldsets = BaseUserAdmin.fieldsets + (
         ('EduHub ma\'lumotlari', {
-            'fields': ('role', 'full_name', 'bio', 'track', 'grade', 'plan', 'is_blocked'),
+            'fields': ('role', 'full_name', 'bio', 'track', 'grade', 'plan', 'plan_expires_at', 'is_blocked'),
         }),
     )
 
-    actions = ['block_users', 'unblock_users', 'make_admin', 'change_role_action']
+    actions = ['block_users', 'unblock_users', 'make_admin', 'change_role_action', 'cancel_subscription_action']
 
     @admin.action(description='Bloklash')
     def block_users(self, request, queryset):
@@ -29,6 +29,14 @@ class UserAdmin(BaseUserAdmin):
     @admin.action(description='Blokdan chiqarish')
     def unblock_users(self, request, queryset):
         count = queryset.update(is_blocked=False)
+
+    @admin.action(description="Obunani bekor qilish (plan → free)")
+    def cancel_subscription_action(self, request, queryset):
+        """Tanlangan foydalanuvchilarning faol obunasini (hafta/oy/yil)
+        muddatidan oldin bekor qiladi. Kurs sotib olishlariga
+        (CoursePurchase) tegmaydi — ular alohida va muddatsiz."""
+        count = queryset.exclude(plan=User.PLAN_FREE).update(plan=User.PLAN_FREE, plan_expires_at=None)
+        self.message_user(request, f'{count} ta foydalanuvchining obunasi bekor qilindi')
 
     @admin.action(description='Admin qilish')
     def make_admin(self, request, queryset):

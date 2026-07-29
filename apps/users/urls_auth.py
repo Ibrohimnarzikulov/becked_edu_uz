@@ -12,6 +12,7 @@ from .views import (
     AdminUserUpdateView,
     AdminStatsView,
     AdminBlockUserView,
+    AdminCancelSubscriptionView,
     AdminCreateUserView,
 )
 
@@ -25,6 +26,7 @@ urlpatterns = [
     path('admin/users/', AdminUserListView.as_view(), name='admin-users'),
     path('admin/users/<int:user_id>/update/', AdminUserUpdateView.as_view(), name='admin-update-user'),
     path('admin/users/<int:user_id>/block/', AdminBlockUserView.as_view(), name='admin-block-user'),
+    path('admin/users/<int:user_id>/cancel-subscription/', AdminCancelSubscriptionView.as_view(), name='admin-cancel-subscription'),
     path('admin/users/<int:user_id>/', AdminUserDetailView.as_view(), name='admin-user-detail'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token-refresh'),
 ]

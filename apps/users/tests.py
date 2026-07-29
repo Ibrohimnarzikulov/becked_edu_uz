@@ -1,8 +1,14 @@
 """Tests for users app."""
-from django.test import TestCase
+from datetime import timedelta
+
+from django.contrib.admin.sites import AdminSite
+from django.contrib.messages.storage.fallback import FallbackStorage
+from django.test import RequestFactory, TestCase
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework.test import APIClient
 
+from .admin import UserAdmin
 from .models import User
 
 
@@ -209,6 +215,95 @@ class AdminTests(TestCase):
             format='json',
         )
         self.assertEqual(response.status_code, 400)
+
+
+class AdminCancelSubscriptionTests(TestCase):
+    """Admin — foydalanuvchining faol obunasini muddatidan oldin bekor qiladi."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.admin = User.objects.create_user(
+            username='subadmin', password='admin1234',
+            role=User.ROLE_ADMIN, is_staff=True,
+        )
+        self.student = User.objects.create_user(
+            username='substudent', password='student1234',
+            role=User.ROLE_STUDENT, plan=User.PLAN_STUDENT,
+            plan_expires_at=timezone.now() + timedelta(days=10),
+        )
+
+    def test_admin_can_cancel_subscription(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.post(
+            reverse('admin-cancel-subscription', kwargs={'user_id': self.student.id}),
+        )
+        self.assertEqual(response.status_code, 200)
+        self.student.refresh_from_db()
+        self.assertEqual(self.student.plan, User.PLAN_FREE)
+        self.assertIsNone(self.student.plan_expires_at)
+
+    def test_cannot_cancel_already_free_user(self):
+        free_user = User.objects.create_user(username='alreadyfree', password='pass1234')
+        self.client.force_authenticate(self.admin)
+        response = self.client.post(
+            reverse('admin-cancel-subscription', kwargs={'user_id': free_user.id}),
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_student_cannot_cancel_subscription(self):
+        self.client.force_authenticate(self.student)
+        response = self.client.post(
+            reverse('admin-cancel-subscription', kwargs={'user_id': self.student.id}),
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_cancel_does_not_affect_course_purchases(self):
+        """Obunani bekor qilish CoursePurchase'ga tegmaydi (alohida narsa)."""
+        from apps.courses.models import Course, CoursePurchase
+        course = Course.objects.create(
+            slug='cancel-test-course', title_uz='Test', type='IT',
+            requires_purchase=True, price=100000,
+        )
+        CoursePurchase.objects.create(user=self.student, course=course)
+
+        self.client.force_authenticate(self.admin)
+        self.client.post(reverse('admin-cancel-subscription', kwargs={'user_id': self.student.id}))
+
+        self.assertTrue(
+            CoursePurchase.objects.filter(user=self.student, course=course).exists()
+        )
+
+
+class UserAdminCancelSubscriptionActionTests(TestCase):
+    """Django admin bulk action — 'Obunani bekor qilish'."""
+
+    def setUp(self):
+        self.admin_model = UserAdmin(User, AdminSite())
+        self.factory = RequestFactory()
+        self.student = User.objects.create_user(
+            username='bulkcancel', password='pass1234',
+            plan=User.PLAN_STUDENT, plan_expires_at=timezone.now() + timedelta(days=5),
+        )
+        self.free_user = User.objects.create_user(username='alreadyfree2', password='pass1234')
+
+    def _admin_request(self):
+        """`message_user()` uchun session+messages ulangan request."""
+        request = self.factory.post('/admin/users/user/')
+        request.user = User.objects.create_user(
+            username='reqadmin', password='x', role=User.ROLE_ADMIN, is_staff=True,
+        )
+        request.session = {}
+        request._messages = FallbackStorage(request)
+        return request
+
+    def test_bulk_action_cancels_only_active_subscriptions(self):
+        request = self._admin_request()
+        queryset = User.objects.filter(id__in=[self.student.id, self.free_user.id])
+        self.admin_model.cancel_subscription_action(request, queryset)
+
+        self.student.refresh_from_db()
+        self.assertEqual(self.student.plan, User.PLAN_FREE)
+        self.assertIsNone(self.student.plan_expires_at)
 
 
 class AdminRoleTests(TestCase):

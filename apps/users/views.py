@@ -171,6 +171,33 @@ class AdminBlockUserView(APIView):
         })
 
 
+class AdminCancelSubscriptionView(APIView):
+    """POST /api/auth/admin/users/{id}/cancel-subscription/
+
+    Foydalanuvchining faol obunasini (hafta/oy/yil) muddatidan oldin
+    bekor qiladi — `plan` free'ga qaytadi, `plan_expires_at` tozalanadi.
+    Kurs sotib olishlariga (CoursePurchase) tegmaydi — ular muddatsiz
+    va bu alohida narsa.
+    """
+    permission_classes = [IsAdmin]
+
+    def post(self, request, user_id):
+        user = get_object_or_404(User, id=user_id)
+
+        if user.plan == User.PLAN_FREE and not user.plan_expires_at:
+            return Response({'error': "Bu foydalanuvchida faol obuna yo'q"},
+                             status=status.HTTP_400_BAD_REQUEST)
+
+        user.plan = User.PLAN_FREE
+        user.plan_expires_at = None
+        user.save(update_fields=['plan', 'plan_expires_at'])
+
+        return Response({
+            'detail': "Obuna bekor qilindi",
+            'user': AdminUserSerializer(user, context={'request': request}).data,
+        })
+
+
 class AdminUserDetailView(APIView):
     """GET /api/auth/admin/users/{id}/ — bitta user tafsilotlari."""
     permission_classes = [IsAdmin]
